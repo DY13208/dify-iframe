@@ -66,7 +66,7 @@
       apiKey: "xai-xxx",
       agentId: 4,
       title: "pandawm在线客服",
-      assetsBase: "https://ai.pandawm.com",
+      assetsBase: "https://ai.xxxxx.com",
       theme: pageTheme === "dark" ? "dark" : "light"
     };
     var u = localStorage.getItem("dify_demo_user") || "anon_" + (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
@@ -88,7 +88,7 @@
       "&title=" +
       encodeURIComponent(window.difyEmbedConfig.title) +
       "&assetsBase=" +
-      encodeURIComponent(window.difyEmbedConfig.assetsBase || "https://ai.pandawm.com") +
+      encodeURIComponent(window.difyEmbedConfig.assetsBase || "https://ai.xxxxx.com") +
       "&theme=" +
       encodeURIComponent(window.difyEmbedConfig.theme || "light");
     document.getElementById("iframeCode").textContent =
