@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>嵌入演示（Dify 风格）</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #e8eeff 0%, #f5f7fb 50%, #eef3ff 100%);
+      color: #1c1f23;
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 20px 120px;
+    }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { color: #64748b; line-height: 1.6; margin: 0 0 16px; }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 24px rgba(21, 94, 239, 0.08);
+      margin-bottom: 20px;
+    }
+    pre {
+      margin: 0;
+      padding: 14px;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .note { font-size: 13px; color: #94a3b8; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Dify 风格嵌入式</h1>
+    <p>右下角蓝色按钮 = 官方嵌入式同款交互；聊天页内<strong>没有「新建会话」</strong>，只有顶栏<strong>刷新 = 清空并重新开始</strong>。</p>
+
+    <div class="card">
+      <strong>方式 A — 一行 iframe（适合内嵌到后台布局）</strong>
+      <p class="note">请把下面地址里的参数改成你的（user 建议每个访客固定）。</p>
+      <pre id="iframeCode"></pre>
+    </div>
+
+    <div class="card">
+      <strong>方式 B — 与 Dify 一样的「气泡 + 浮窗」</strong>
+      <p class="note">本页已加载下方脚本，直接看右下角。复制用法见 <code>embed-snippet.html</code> 或 README。</p>
+    </div>
+  </div>
+
+  <!-- 与线上一致：先配置再加载 dify-embed.js -->
+  <script>
+    var pageUrl = new URL(window.location.href);
+    var pageTheme = (pageUrl.searchParams.get("theme") || "light").toLowerCase();
+    window.difyEmbedConfig = {
+      embedPage: new URL("embed-chat.html", window.location.href).href,
+      apiBase: "http://localhost:8080",
+      apiKey: "xai-da64552633feb90febdffa437e445c28ad2f86cb692fc5ee",
+      agentId: 4,
+      title: "pandawm在线客服",
+      assetsBase: "https://ai.pandawm.com",
+      theme: pageTheme === "dark" ? "dark" : "light"
+    };
+    var u = localStorage.getItem("dify_demo_user") || "anon_" + (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+    localStorage.setItem("dify_demo_user", u);
+    window.difyEmbedConfig.user = u;
+
+    var base = encodeURIComponent(window.difyEmbedConfig.apiBase);
+    var src =
+      new URL("embed-chat.html", window.location.href).href +
+      "?base=" +
+      base +
+      "&keyViaPost=1" +
+      "&parentOrigin=" +
+      encodeURIComponent(window.location.origin) +
+      "&agentId=" +
+      window.difyEmbedConfig.agentId +
+      "&user=" +
+      encodeURIComponent(u) +
+      "&title=" +
+      encodeURIComponent(window.difyEmbedConfig.title) +
+      "&assetsBase=" +
+      encodeURIComponent(window.difyEmbedConfig.assetsBase || "https://ai.pandawm.com") +
+      "&theme=" +
+      encodeURIComponent(window.difyEmbedConfig.theme || "light");
+    document.getElementById("iframeCode").textContent =
+      "<!-- 推荐：用下方 dify-embed.js，key 不在地址栏；纯 iframe 需父页 postMessage 下发 key，或临时加 &key=（不推荐） -->\n" +
+      '<iframe src="' +
+      src +
+      '" style="width:400px;height:560px;border:0;border-radius:16px" allow="fullscreen" title="测试"></iframe>';
+  </script>
+  <script src="./dify-embed.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,1761 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Embed Chat</title>
+  <style>
+    :root {
+      --header: linear-gradient(135deg, #f1f5f9 0%, #ecfdf5 100%);
+      --header-hover: rgba(15, 23, 42, 0.06);
+      --chat-bg: radial-gradient(circle at top, #fffdf8 0%, #f8f4ec 52%, #f2eee7 100%);
+      --bubble-user: linear-gradient(145deg, #3a3026 0%, #5a4d3f 100%);
+      --bubble-bot: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --send: #111111;
+      --radius-panel: 16px;
+    }
+    body[data-theme="dark"] {
+      --header: #000000;
+      --header-hover: rgba(255, 255, 255, 0.12);
+      --chat-bg: radial-gradient(circle at top, #fffdf8 0%, #f8f4ec 52%, #f2eee7 100%);
+      --bubble-user: linear-gradient(145deg, #111827 0%, #1f2937 100%);
+      --bubble-bot: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --send: #111111;
+    }
+    body[data-theme="light"] .avatar.bot {
+      background: linear-gradient(145deg, #fff 0%, #faf7f2 100%);
+      border-color: #e7dfd4;
+      box-shadow: 0 4px 12px rgba(60, 45, 30, 0.08);
+    }
+    body[data-theme="light"] .row.assistant .bubble {
+      border-color: #e8e0d6;
+    }
+    body[data-theme="light"] .input-wrap {
+      background: rgba(255, 255, 255, 0.98);
+      border-color: #e6ddd1;
+      box-shadow: 0 10px 24px rgba(60, 45, 30, 0.08);
+    }
+    body[data-theme="light"] .icon-round {
+      color: #716252;
+    }
+    body[data-theme="light"] .icon-round:hover {
+      background: #efe8dc;
+      color: #2f2a23;
+    }
+    body[data-theme="light"] .pending-chip {
+      border-color: #e7dfd4;
+      box-shadow: 0 4px 12px rgba(60, 45, 30, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: var(--chat-bg);
+    }
+    /* 首屏加载：不依赖 JS，iframe 打开即显示，避免白屏 */
+    #pageBootLoader {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--chat-bg);
+      transition: opacity 0.28s ease, visibility 0.28s ease;
+    }
+    body.boot-ready #pageBootLoader {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .page-boot-inner {
+      text-align: center;
+      color: #64748b;
+    }
+    .page-boot-spinner {
+      width: 36px;
+      height: 36px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      border: 3px solid rgba(100, 116, 139, 0.2);
+      border-top-color: rgba(100, 116, 139, 0.9);
+      animation: boot-spin 0.75s linear infinite;
+    }
+    .page-boot-text {
+      margin: 0;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+    }
+    @keyframes boot-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: var(--radius-panel);
+      background: var(--chat-bg);
+    }
+    body[data-theme="dark"] .avatar.bot {
+      background: linear-gradient(145deg, #fff 0%, #f5f5f5 100%);
+      border-color: #d1d5db;
+      color: #111827;
+    }
+    body[data-theme="dark"] .row.assistant .bubble {
+      border-color: #e5e7eb;
+    }
+    body[data-theme="dark"] .input-wrap {
+      background: rgba(255, 255, 255, 0.98);
+      border-color: #d1d5db;
+    }
+    body[data-theme="dark"] .input-wrap textarea {
+      color: #1f2937;
+    }
+    body[data-theme="dark"] .input-wrap textarea::placeholder {
+      color: #6b7280;
+    }
+    body[data-theme="dark"] .icon-round {
+      color: #4b5563;
+    }
+    body[data-theme="dark"] .icon-round:hover {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    /* 顶栏 — Dify 嵌入式 */
+    .header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      background: var(--header);
+      color: #111111;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+    }
+    body[data-theme="dark"] .header {
+      color: #ffffff;
+    }
+    .header-title {
+      flex: 1;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .header-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .header-btn:hover { background: var(--header-hover); }
+    .header-btn svg { width: 20px; height: 20px; }
+    .header-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 14px 100px;
+      -webkit-overflow-scrolling: touch;
+      background: transparent;
+    }
+    .row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      margin-bottom: 14px;
+      max-width: 100%;
+    }
+    .row.user { flex-direction: row; justify-content: flex-end; }
+    .row.assistant { flex-direction: row; justify-content: flex-start; }
+
+    .avatar {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .avatar.user {
+      background: #111827;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 4px 10px rgba(17, 24, 39, 0.28);
+    }
+    .avatar.bot {
+      background: linear-gradient(145deg, #fff 0%, #f4f7ff 100%);
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    }
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+      display: block;
+    }
+
+    .bubble {
+      max-width: calc(100% - 48px);
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+    }
+    .row.user .bubble {
+      background: var(--bubble-user);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .row.assistant .bubble {
+      background: var(--bubble-bot);
+      border: 1px solid #e2e8f0;
+      border-bottom-left-radius: 4px;
+    }
+    .bubble.thinking { color: var(--muted); font-style: italic; }
+    .thinking-spinner {
+      width: 18px;
+      height: 18px;
+      display: inline-block;
+      border-radius: 50%;
+      border: 2px solid rgba(100, 116, 139, 0.25);
+      border-top-color: rgba(100, 116, 139, 0.85);
+      animation: embed-spin 0.8s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes embed-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    body[data-theme="dark"] .thinking-spinner {
+      border: 2px solid rgba(148, 163, 184, 0.25);
+      border-top-color: rgba(148, 163, 184, 0.9);
+    }
+
+    /* 底部输入区 — 悬浮条 */
+    .footer {
+      flex-shrink: 0;
+      padding: 0 12px 10px;
+      background: linear-gradient(180deg, rgba(241, 245, 249, 0) 0%, rgba(241, 245, 249, 0.95) 12px);
+    }
+    .input-wrap {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.96);
+      border-radius: 14px;
+      padding: 8px 10px 8px 14px;
+      border: 1px solid #dbe3ed;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+    .input-wrap textarea {
+      flex: 1;
+      border: none;
+      outline: none;
+      resize: none;
+      min-height: 22px;
+      max-height: 120px;
+      font: inherit;
+      font-size: 14px;
+      line-height: 22px;
+      padding: 6px 0;
+      background: transparent;
+      color: var(--text);
+    }
+    .input-wrap textarea::placeholder { color: #a0a7b8; }
+
+    .icon-round {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      color: #64748b;
+    }
+    .icon-round:hover { background: #e2e8f0; color: #0f172a; }
+    .icon-round:disabled { opacity: 0.35; cursor: not-allowed; }
+
+
+    .send-btn {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: var(--send);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 2px;
+    }
+    .send-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(17, 17, 17, 0.25); }
+    .send-btn:disabled {
+      background: #d1d5db;
+      color: #f8fafc;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .footer { position: relative; }
+    .composer-emoji {
+      position: absolute;
+      right: 64px;
+      bottom: 62px;
+      width: 228px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 8px;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.15);
+      display: none;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 4px;
+      z-index: 20;
+    }
+    .composer-emoji.show { display: grid; }
+    .emoji-btn {
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0;
+    }
+    .emoji-btn:hover { background: #f3f4f6; }
+
+    .send-btn.stop-state {
+      background: #ef4444;
+    }
+    .send-btn.stop-state:hover {
+      box-shadow: 0 8px 18px rgba(239, 68, 68, 0.35);
+    }
+
+    .brand {
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      padding: 6px 8px 4px;
+      letter-spacing: 0.04em;
+    }
+    .brand strong { color: #64748b; font-weight: 600; }
+
+    .pending-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      padding: 0 12px 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .pending-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid #dbe3ed;
+      border-radius: 10px;
+      padding: 4px 6px 4px 10px;
+      max-width: 100%;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+    }
+    .pending-chip .thumb {
+      width: 36px;
+      height: 36px;
+      object-fit: cover;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+    .pending-chip .chip-name {
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .chip-remove {
+      border: none;
+      background: #f1f5f9;
+      color: #64748b;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .chip-remove:hover { background: #fee2e2; color: #b91c1c; }
+    .bubble .msg-text { white-space: pre-wrap; word-break: break-word; }
+    .bubble .msg-images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .bubble .msg-images:first-child { margin-top: 0; }
+    .bubble img.img-thumb {
+      width: 160px;
+      height: 160px;
+      border-radius: 10px;
+      object-fit: cover;
+      vertical-align: middle;
+      cursor: pointer;
+      border: 1px solid #e2e8f0;
+      background: #fff;
+    }
+    .bubble img.img-thumb:hover {
+      filter: brightness(1.03);
+    }
+
+    .bubble pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 8px 0;
+    }
+    .bubble code.inline-code {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 1px 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+        "Courier New", monospace;
+      font-size: 12px;
+    }
+
+    /* 图片预览弹窗（点击缩略图 -> 放大 + 下载） */
+    #imgModalOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2147483647;
+      padding: 16px;
+    }
+    #imgModalOverlay.show {
+      display: flex;
+    }
+    .imgModal {
+      width: min(920px, calc(100vw - 32px));
+      max-height: calc(100vh - 32px);
+      background: #fff;
+      border-radius: 16px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .imgModalTop {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .imgModalTitle {
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+    }
+    .imgModalClose {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+      color: #64748b;
+      padding: 4px 8px;
+      border-radius: 10px;
+    }
+    .imgModalClose:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .imgModalBody {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: start;
+      overflow: auto;
+    }
+    .imgModalBody img {
+      max-width: 100%;
+      max-height: 72vh;
+      object-fit: contain;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+    .imgModalActions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 140px;
+    }
+    .imgModalActions a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #155eef;
+      color: #fff;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid #155eef;
+    }
+    .imgModalActions a.secondary {
+      background: #fff;
+      color: #155eef;
+      border: 1px solid #dbeafe;
+    }
+
+    #fileInput { display: none; }
+  </style>
+</head>
+<body>
+  <div id="pageBootLoader" aria-busy="true" aria-live="polite">
+    <div class="page-boot-inner">
+      <div class="page-boot-spinner" aria-hidden="true"></div>
+      <p class="page-boot-text">加载中…</p>
+    </div>
+  </div>
+  <div class="app" id="appRoot">
+    <header class="header">
+      <span class="header-title" id="appTitle">助手</span>
+      <!-- <button type="button" class="header-btn" id="btnExpand" title="展开" aria-label="展开">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+        </svg>
+      </button> -->
+      <button type="button" class="header-btn" id="btnRefresh" title="重新开始" aria-label="重新开始">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+        </svg>
+      </button>
+    </header>
+
+    <section class="messages" id="messages" aria-live="polite"></section>
+
+    <div class="pending-files" id="pendingFiles" hidden></div>
+
+    <footer class="footer">
+      <div class="input-wrap">
+        <textarea id="input" rows="1" placeholder=""></textarea>
+        <button type="button" class="icon-round" id="btnAttach" title="上传图片" aria-label="上传图片">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+        <button type="button" class="icon-round" id="btnEmoji" title="表情" aria-label="表情">
+          😀
+        </button>
+        <button type="button" class="send-btn" id="btnSend" title="发送" aria-label="发送">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="composer-emoji" id="emojiPanel" aria-label="表情面板"></div>
+    </footer>
+  </div>
+
+  <div id="imgModalOverlay" aria-hidden="true">
+    <div class="imgModal" role="dialog" aria-modal="true" aria-label="图片预览">
+      <div class="imgModalTop">
+        <div class="imgModalTitle">图片预览</div>
+        <button type="button" class="imgModalClose" id="imgModalClose" aria-label="关闭">×</button>
+      </div>
+      <div class="imgModalBody">
+        <img id="imgModalImg" alt="" src="" />
+        <div class="imgModalActions">
+          <a id="imgModalDownload" href="#" target="_blank" rel="noopener">下载</a>
+          <a id="imgModalOpenNew" href="#" target="_blank" rel="noopener" class="secondary">在新窗口打开</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" multiple accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/svg+xml" />
+
+  <script>
+    (function () {
+      const url = new URL(window.location.href);
+      var defaultBase = String(window.location.origin + "/xai").replace(/\/+$/, "");
+      /** 与 dify-embed.js 配合：key 由父页面 postMessage 下发，不在 URL 中暴露 */
+      const keyViaPost = url.searchParams.get("keyViaPost") === "1";
+      var parentOriginExpected = "";
+      try {
+        var po = url.searchParams.get("parentOrigin");
+        if (po) parentOriginExpected = decodeURIComponent(po);
+      } catch (e) {
+        parentOriginExpected = "";
+      }
+      const cfg = {
+        base: (url.searchParams.get("base") || defaultBase).replace(/\/+$/, ""),
+        key: url.searchParams.get("key") || "",
+        agentId: Number(url.searchParams.get("agentId") || 0),
+        user: (url.searchParams.get("user") || "").trim(),
+        title: url.searchParams.get("title") || "助手",
+        conversationId: url.searchParams.get("conversationId") || null,
+        /** 用户头像：支持文本/emoji 或图片地址（http(s):// 或 /files/...） */
+        userAvatar: url.searchParams.get("userAvatar") || "我",
+        /** 客服/AI 头像：支持文本/emoji 或图片地址（http(s):// 或 /files/...） */
+        botAvatar: url.searchParams.get("botAvatar") || "🤖",
+        /** 聊天记录里相对图片地址要拼的前缀，默认你的线上域名 */
+        assetsBase: (url.searchParams.get("assetsBase") || "https://ai.pandawm.com").replace(/\/+$/, ""),
+        /** URL 参数 persistSession=0 可关闭 localStorage 记忆（调试用） */
+        persistSession: url.searchParams.get("persistSession") !== "0",
+        theme: (url.searchParams.get("theme") || "light").toLowerCase()
+      };
+      var debugTiming = url.searchParams.get("debug") === "1";
+      var debugT0 = Date.now();
+      function logTiming(label, extra) {
+        if (!debugTiming) return;
+        var dt = Date.now() - debugT0;
+        try {
+          if (typeof extra === "undefined") {
+            console.log("[embed-chat][" + dt + "ms] " + label);
+          } else {
+            console.log("[embed-chat][" + dt + "ms] " + label, extra);
+          }
+        } catch (e) {}
+      }
+      if (cfg.theme === "dark") {
+        document.body.setAttribute("data-theme", "dark");
+      } else {
+        document.body.setAttribute("data-theme", "light");
+      }
+
+      function safeLsGet(k) {
+        try {
+          return localStorage.getItem(k);
+        } catch (e) {
+          return null;
+        }
+      }
+      function safeLsSet(k, v) {
+        try {
+          localStorage.setItem(k, v);
+        } catch (e) {}
+      }
+      function safeLsRemove(k) {
+        try {
+          localStorage.removeItem(k);
+        } catch (e) {}
+      }
+      /** 同一浏览器 + 同一 agent + 同一 API 根地址 共用一个 user / conversation 存储槽 */
+      function storageScopeId() {
+        var s = String(cfg.base) + "\n" + String(cfg.agentId);
+        var h = 0;
+        for (var i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+        return String(h);
+      }
+      var USER_LS_KEY = "dify_webui_embed_user_" + storageScopeId();
+      var CONV_LS_KEY = "dify_webui_embed_conv_" + storageScopeId();
+
+      if (cfg.persistSession) {
+        if (cfg.user) {
+          safeLsSet(USER_LS_KEY, cfg.user);
+        } else {
+          var storedUser = safeLsGet(USER_LS_KEY);
+          if (storedUser) cfg.user = storedUser;
+          else {
+            cfg.user =
+              "anon_" + (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "t" + Date.now());
+            safeLsSet(USER_LS_KEY, cfg.user);
+          }
+        }
+        if (cfg.conversationId) {
+          safeLsSet(CONV_LS_KEY, cfg.conversationId);
+        } else {
+          var storedConv = safeLsGet(CONV_LS_KEY);
+          if (storedConv) cfg.conversationId = storedConv;
+        }
+      } else {
+        if (!cfg.user) {
+          cfg.user =
+            "anon_" + (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "t" + Date.now());
+        }
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const messagesEl = $("messages");
+      const inputEl = $("input");
+      const btnSend = $("btnSend");
+      const btnAttach = $("btnAttach");
+      const btnEmoji = $("btnEmoji");
+      const emojiPanel = $("emojiPanel");
+      const btnRefresh = $("btnRefresh");
+      // const btnExpand = $("btnExpand");
+      const appTitle = $("appTitle");
+      const pendingFilesEl = $("pendingFiles");
+      const fileInput = $("fileInput");
+      const imgModalOverlay = $("imgModalOverlay");
+      const imgModalImg = $("imgModalImg");
+      const imgModalDownload = $("imgModalDownload");
+      const imgModalOpenNew = $("imgModalOpenNew");
+      const imgModalClose = $("imgModalClose");
+
+      appTitle.textContent = cfg.title;
+      inputEl.placeholder = "和 " + cfg.title + " 聊天";
+
+      // 发送按钮在流式时会切换为“停止”状态
+      var sendBtnDefaultHtml = btnSend.innerHTML;
+      var sendBtnStopHtml =
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 6h12v12H6z"/></svg>';
+      var sendBtnTitle = btnSend.getAttribute("title") || "发送";
+      var sendBtnStopTitle = "停止生成";
+
+      let isStreaming = false;
+      let activeTaskId = null;
+      let abortCtrl = null;
+      var currentAssistantBubble = null;
+      /** @type {{ file: File, id?: string, name: string, previewUrl?: string, error?: string }[]} */
+      let pendingUploads = [];
+      var openingStatement = "";
+      var emojiList = ["😀","😁","😂","🤣","😊","😍","😘","😎","🤔","😮","😢","😭","😡","👍","👎","🙏","👏","🎉","❤️","🔥","😴","🤯","😅","😉"];
+
+      function updateSendState() {
+        // 需求：没有文字时禁止发送（即使有图片）
+        var hasText = !!String(inputEl.value || "").trim();
+        // 流式时：发送按钮变成“停止”，允许点击
+        if (isStreaming) {
+          btnSend.disabled = false;
+        } else {
+          btnSend.disabled = !hasText;
+        }
+      }
+
+      function requiredConfigMissing() {
+        return !cfg.base || !cfg.key || !cfg.agentId || !cfg.user;
+      }
+
+      async function callApi(path, init = {}) {
+        var reqMethod = (init && init.method) || "GET";
+        var t0 = Date.now();
+        logTiming("api start", { method: reqMethod, path: path });
+        try {
+          const resp = await fetch(cfg.base + path, {
+            ...init,
+            headers: {
+              Authorization: "Bearer " + cfg.key,
+              ...(init.headers || {})
+            },
+            // 不带 Cookie，确保后端走 Authorization: Bearer 的 API Key 鉴权
+            credentials: "omit"
+          });
+          logTiming("api done", {
+            method: reqMethod,
+            path: path,
+            status: resp.status,
+            elapsedMs: Date.now() - t0
+          });
+          if (!resp.ok) {
+            const txt = await resp.text();
+            throw new Error("HTTP " + resp.status + ": " + txt);
+          }
+          return resp;
+        } catch (e) {
+          logTiming("api fail", {
+            method: reqMethod,
+            path: path,
+            elapsedMs: Date.now() - t0,
+            error: String((e && e.message) || e)
+          });
+          throw e;
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function decodeHtmlEntities(s) {
+        // 将来自服务端/模型的 HTML 实体（例如 &amp;）解码，避免在渲染阶段重复转义
+        var div = document.createElement("textarea");
+        div.innerHTML = String(s == null ? "" : s);
+        return div.value;
+      }
+
+      function normalizeFilesInText(text) {
+        // 用于“流式尚未结束时”的中间态展示：把 /files/... 拼上 assetsBase，并解码 &amp;
+        var t = decodeHtmlEntities(text || "");
+        var base = cfg.assetsBase;
+        // 只针对形如 (\/files\/xxx?...&...) 的片段
+        return t.replace(/\((\/files\/[^)\s]+)\)/g, function (_, path) {
+          return "(" + base + path + ")";
+        });
+      }
+
+      function openImageModal(fullUrl) {
+        if (!fullUrl) return;
+        var u = absMediaUrl(fullUrl);
+        imgModalImg.src = u;
+        imgModalDownload.href = u;
+        imgModalOpenNew.href = u;
+        imgModalOverlay.classList.add("show");
+        imgModalOverlay.setAttribute("aria-hidden", "false");
+      }
+
+      function closeImageModal() {
+        imgModalOverlay.classList.remove("show");
+        imgModalOverlay.setAttribute("aria-hidden", "true");
+        imgModalImg.src = "";
+      }
+
+      imgModalClose.addEventListener("click", function () {
+        closeImageModal();
+      });
+      imgModalOverlay.addEventListener("click", function (e) {
+        if (e.target === imgModalOverlay) closeImageModal();
+      });
+      window.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closeImageModal();
+      });
+
+      function createImageThumb(src) {
+        var full = absMediaUrl(src);
+        var img = document.createElement("img");
+        img.className = "img-thumb";
+        img.src = full;
+        img.alt = "";
+        img.loading = "lazy";
+        img.addEventListener("click", function () {
+          openImageModal(full);
+        });
+        return img;
+      }
+
+      /** 把 /files/... 等相对地址补成可访问的绝对 URL */
+      function absMediaUrl(u) {
+        if (u == null || u === "") return "";
+        const t = String(u).trim();
+        if (/^https?:\/\//i.test(t)) return t;
+        if (t.indexOf("//") === 0) return "https:" + t;
+        if (t.charAt(0) === "/") return cfg.assetsBase + t;
+        return t;
+      }
+
+      function isAvatarImage(v) {
+        if (!v) return false;
+        var t = String(v).trim();
+        // 支持 http(s)://... 或 /files/... 相对路径
+        return /^https?:\/\//i.test(t) || t.charAt(0) === "/";
+      }
+
+      function createAvatarEl(role) {
+        var av = document.createElement("div");
+        av.className = "avatar " + (role === "user" ? "user" : "bot");
+        var val = role === "user" ? cfg.userAvatar : cfg.botAvatar;
+        if (!val) val = role === "user" ? "我" : "🤖";
+
+        if (isAvatarImage(val)) {
+          var img = document.createElement("img");
+          img.src = absMediaUrl(val);
+          img.alt = "";
+          img.loading = "lazy";
+          av.appendChild(img);
+        } else {
+          av.textContent = String(val);
+        }
+        return av;
+      }
+
+      /** 聊天记录正文里出现的相对路径（如 markdown 图片）补前缀 */
+      function absolutizePathsInText(text) {
+        if (!text) return text;
+        var base = cfg.assetsBase;
+        return String(text).replace(/\]\((\/files\/[^)\s]+)\)/g, function (_, path) {
+          return "](" + base + path + ")";
+        });
+      }
+
+      /**
+       * 从后端单条消息里收集要展示的图片 URL（相对则补全）
+       * belongsTo 可选：'user' | 'assistant'（仅 message_files 中会用到）
+       */
+      function collectMessageImageUrls(item, belongsTo) {
+        var urls = [];
+        var lists = [
+          item.message_files,
+          item.files,
+          item.messageFiles,
+          item.file_list,
+          item.inputs && item.inputs.files
+        ];
+        lists.forEach(function (list) {
+          if (!Array.isArray(list)) return;
+          list.forEach(function (f) {
+            if (!f || typeof f !== "object") return;
+            if (belongsTo) {
+              // 当后端明确标记 belongs_to 时才按这个分组，否则跳过避免混到不该显示的侧
+              if (!f.belongs_to || String(f.belongs_to) !== String(belongsTo)) return;
+            }
+            var raw = f.url || f.source_url || f.remote_url || f.preview_url;
+            if (!raw) return;
+            var mime = (f.mime_type || f.mimeType || "").toLowerCase();
+            var ext = (f.extension || "").toLowerCase();
+            var isImg =
+              mime.indexOf("image/") === 0 ||
+              /^(jpg|jpeg|png|gif|webp|svg)$/.test(ext) ||
+              /\.(jpe?g|png|gif|webp|svg)(\?|$)/i.test(String(raw));
+            if (isImg) urls.push(absMediaUrl(raw));
+          });
+        });
+        return urls;
+      }
+
+      /**
+       * 助手气泡：支持 markdown 图片 ![alt](url) 与纯文本
+       */
+      function setAssistantBubbleHtml(bubble, rawText) {
+        // 支持基本 Markdown（图片/链接/粗体/行内 code/代码块），并确保 /files/... 带前缀
+        var text = normalizeFilesInText(rawText || "");
+        bubble.innerHTML = "";
+
+        var container = document.createElement("div");
+        container.className = "msg-text";
+
+        // 代码块 ```...```
+        var fenceRe = /```([\s\S]*?)```/g;
+        var last = 0;
+        var fm;
+        while ((fm = fenceRe.exec(text))) {
+          if (fm.index > last) {
+            renderInlineMarkdown(container, text.slice(last, fm.index));
+          }
+          var codeBlock = document.createElement("pre");
+          var codeEl = document.createElement("code");
+          codeEl.textContent = fm[1] || "";
+          codeBlock.appendChild(codeEl);
+          container.appendChild(codeBlock);
+          last = fenceRe.lastIndex;
+        }
+        if (last < text.length) {
+          renderInlineMarkdown(container, text.slice(last));
+        }
+
+        bubble.appendChild(container);
+      }
+
+      function ensureAssistantSpinner(bubble) {
+        bubble.innerHTML = "";
+        var sp = document.createElement("span");
+        sp.className = "thinking-spinner";
+        sp.setAttribute("aria-label", "正在生成");
+        bubble.appendChild(sp);
+      }
+
+      function renderInlineMarkdown(container, segment) {
+        var t = String(segment == null ? "" : segment);
+        if (!t) return;
+        var inlineRe =
+          /!\[([^\]]*)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g;
+        var lastIndex = 0;
+        var m;
+        while ((m = inlineRe.exec(t))) {
+          if (m.index > lastIndex) container.appendChild(document.createTextNode(t.slice(lastIndex, m.index)));
+
+          if (m[2]) {
+            // image: m[1]=alt, m[2]=src
+            container.appendChild(createImageThumb(m[2]));
+          } else if (m[3]) {
+            // bold: m[3]
+            var strong = document.createElement("strong");
+            strong.textContent = m[3];
+            container.appendChild(strong);
+          } else if (m[4]) {
+            // inline code: m[4]
+            var code = document.createElement("code");
+            code.className = "inline-code";
+            code.textContent = m[4];
+            container.appendChild(code);
+          } else if (m[5] && m[6]) {
+            // link: m[5]=text, m[6]=url
+            var a = document.createElement("a");
+            var href = absMediaUrl(m[6]);
+            a.href = href;
+            a.textContent = m[5];
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.style.color = "#155eef";
+            a.style.textDecoration = "none";
+            a.style.wordBreak = "break-word";
+            container.appendChild(a);
+          }
+
+          lastIndex = inlineRe.lastIndex;
+        }
+        if (lastIndex < t.length) container.appendChild(document.createTextNode(t.slice(lastIndex)));
+      }
+
+      function appendUserMessage(text, imageUrls) {
+        var row = document.createElement("div");
+        row.className = "row user";
+        var av = createAvatarEl("user");
+        var bubble = document.createElement("div");
+        bubble.className = "bubble";
+        if (imageUrls && imageUrls.length) {
+          var wrap = document.createElement("div");
+          wrap.className = "msg-images";
+          imageUrls.forEach(function (src) {
+            wrap.appendChild(createImageThumb(src));
+          });
+          bubble.appendChild(wrap);
+        }
+        if (text) {
+          var div = document.createElement("div");
+          div.className = "msg-text";
+          div.textContent = text;
+          bubble.appendChild(div);
+        }
+        row.appendChild(bubble);
+        row.appendChild(av);
+        messagesEl.appendChild(row);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        return bubble;
+      }
+
+      function appendAssistantPlain(text, extraClass, imageUrls) {
+        const row = document.createElement("div");
+        row.className = "row assistant";
+        const av = createAvatarEl("assistant");
+        const bubble = document.createElement("div");
+        bubble.className = "bubble" + (extraClass ? " " + extraClass : "");
+        setAssistantBubbleHtml(bubble, text);
+        if (imageUrls && imageUrls.length) {
+          var wrap = document.createElement("div");
+          wrap.className = "msg-images";
+          imageUrls.forEach(function (src) {
+            wrap.appendChild(createImageThumb(src));
+          });
+          bubble.appendChild(wrap);
+        }
+        row.appendChild(av);
+        row.appendChild(bubble);
+        messagesEl.appendChild(row);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        return bubble;
+      }
+
+      /** @deprecated 简单纯文本行（助手） */
+      function appendRow(role, text, extraClass) {
+        if (role === "assistant") return appendAssistantPlain(text, extraClass);
+        return appendUserMessage(text, null);
+      }
+
+      function setBusy(streaming) {
+        isStreaming = streaming;
+        btnAttach.disabled = streaming;
+        btnEmoji.disabled = streaming;
+        inputEl.disabled = streaming;
+        btnRefresh.disabled = streaming;
+        updateSendState();
+        // 发送按钮在流式回复时变为“停止”
+        if (streaming) {
+          btnSend.classList.add("stop-state");
+          btnSend.setAttribute("title", sendBtnStopTitle);
+          btnSend.setAttribute("aria-label", sendBtnStopTitle);
+          btnSend.innerHTML = sendBtnStopHtml;
+        } else {
+          btnSend.classList.remove("stop-state");
+          btnSend.setAttribute("title", sendBtnTitle);
+          btnSend.setAttribute("aria-label", sendBtnTitle);
+          btnSend.innerHTML = sendBtnDefaultHtml;
+        }
+      }
+
+      function resetSession() {
+        if (isStreaming && abortCtrl) {
+          abortCtrl.abort();
+        }
+        if (activeTaskId) {
+          callApi("/api/dify/chat-messages/" + activeTaskId + "/stop", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId: cfg.agentId, user: cfg.user })
+          }).catch(function () {});
+        }
+        cfg.conversationId = null;
+        if (cfg.persistSession) safeLsRemove(CONV_LS_KEY);
+        // 通知父页面：会话被手动清空（用于持久化的 conversationId 同步清除）
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(
+              { type: "dify-embed-conversation-cleared", source: "dify-webui-embed" },
+              "*"
+            );
+          }
+        } catch (e) {}
+        activeTaskId = null;
+        abortCtrl = null;
+        pendingUploads.forEach(function (p) {
+          if (p.previewUrl) {
+            try {
+              URL.revokeObjectURL(p.previewUrl);
+            } catch (e) {}
+          }
+        });
+        pendingUploads = [];
+        renderPendingFiles();
+        try {
+          messagesEl.querySelectorAll('img[src^="blob:"]').forEach(function (img) {
+            URL.revokeObjectURL(img.src);
+          });
+        } catch (e) {}
+        messagesEl.innerHTML = "";
+        // 新会话首次打开仍显示开场白（如接口返回）
+        renderOpeningStatementIfNeeded();
+        setBusy(false);
+      }
+
+      /** 与前端 uploadFile 解析链一致：data.id / data.payload.id / upload_file_id / data 为字符串 */
+      function extractUploadFileId(json) {
+        if (!json || typeof json !== "object") return null;
+        var d = json.data;
+        var payload = d && typeof d === "object" ? d.payload : undefined;
+        var id =
+          (typeof d === "string" && d) ||
+          (d && typeof d.id === "string" && d.id) ||
+          (payload && typeof payload.id === "string" && payload.id) ||
+          (d && typeof d.upload_file_id === "string" && d.upload_file_id) ||
+          (d && typeof d.uploadFileId === "string" && d.uploadFileId) ||
+          (typeof json.id === "string" && json.id) ||
+          "";
+        return id ? String(id) : null;
+      }
+
+      async function uploadOne(file) {
+        const fd = new FormData();
+        fd.append("agentId", String(cfg.agentId));
+        fd.append("user", cfg.user);
+        fd.append("file", file);
+        const resp = await callApi("/api/dify/files/upload", { method: "POST", body: fd });
+        const data = await resp.json().catch(function () { return {}; });
+        var code = typeof data.code === "number" ? data.code : 200;
+        if (code !== 200) {
+          throw new Error((data.message && String(data.message)) || "上传失败");
+        }
+        return extractUploadFileId(data);
+      }
+
+      function removePendingAt(index) {
+        var p = pendingUploads[index];
+        if (!p) return;
+        if (p.previewUrl) {
+          try {
+            URL.revokeObjectURL(p.previewUrl);
+          } catch (e) {}
+        }
+        pendingUploads.splice(index, 1);
+        renderPendingFiles();
+      }
+
+      function renderPendingFiles() {
+        pendingFilesEl.innerHTML = "";
+        if (!pendingUploads.length) {
+          pendingFilesEl.hidden = true;
+          return;
+        }
+        pendingFilesEl.hidden = false;
+        pendingUploads.forEach(function (p, idx) {
+          var chip = document.createElement("span");
+          chip.className = "pending-chip";
+          if (p.previewUrl) {
+            var img = document.createElement("img");
+            img.className = "thumb";
+            img.src = p.previewUrl;
+            img.alt = "";
+            chip.appendChild(img);
+          }
+          var name = document.createElement("span");
+          name.className = "chip-name";
+          name.textContent = (p.error ? p.file.name + " (失败)" : p.id ? p.file.name + " ✓" : p.file.name + " …") || "";
+          chip.appendChild(name);
+          var rm = document.createElement("button");
+          rm.type = "button";
+          rm.className = "chip-remove";
+          rm.setAttribute("aria-label", "移除");
+          rm.textContent = "×";
+          rm.addEventListener("click", function () {
+            removePendingAt(idx);
+          });
+          chip.appendChild(rm);
+          pendingFilesEl.appendChild(chip);
+        });
+      }
+
+      btnAttach.addEventListener("click", function () {
+        if (isStreaming) return;
+        emojiPanel.classList.remove("show");
+        fileInput.click();
+      });
+
+      btnEmoji.addEventListener("click", function () {
+        if (isStreaming) return;
+        emojiPanel.classList.toggle("show");
+      });
+
+      emojiPanel.innerHTML = emojiList
+        .map(function (e) {
+          return '<button type="button" class="emoji-btn" data-emoji="' + e + '">' + e + "</button>";
+        })
+        .join("");
+      emojiPanel.addEventListener("click", function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute) return;
+        var emoji = t.getAttribute("data-emoji");
+        if (!emoji) return;
+        var start = inputEl.selectionStart || inputEl.value.length;
+        var end = inputEl.selectionEnd || inputEl.value.length;
+        var v = inputEl.value;
+        inputEl.value = v.slice(0, start) + emoji + v.slice(end);
+        var next = start + emoji.length;
+        inputEl.focus();
+        inputEl.setSelectionRange(next, next);
+        emojiPanel.classList.remove("show");
+        updateSendState();
+      });
+
+      document.addEventListener("click", function (ev) {
+        var t = ev.target;
+        if (!t) return;
+        if (t === btnEmoji || emojiPanel.contains(t)) return;
+        emojiPanel.classList.remove("show");
+      });
+
+      fileInput.addEventListener("change", async function () {
+        const files = Array.from(fileInput.files || []);
+        fileInput.value = "";
+        if (!files.length || requiredConfigMissing()) return;
+        for (const file of files) {
+          if (!file.type || file.type.indexOf("image/") !== 0) {
+            continue;
+          }
+          var previewUrl = URL.createObjectURL(file);
+          var entry = { file: file, previewUrl: previewUrl };
+          pendingUploads.push(entry);
+          renderPendingFiles();
+          var idx = pendingUploads.length - 1;
+          try {
+            const id = await uploadOne(file);
+            if (id) pendingUploads[idx].id = id;
+            else pendingUploads[idx].error = "no_id";
+          } catch (e) {
+            pendingUploads[idx].error = String(e.message || e);
+          }
+          renderPendingFiles();
+        }
+        updateSendState();
+      });
+
+      function buildDifyFilesArray(snapshot) {
+        return snapshot
+          .filter(function (p) {
+            return p.id;
+          })
+          .map(function (p) {
+            return {
+              type: "image",
+              transfer_method: "local_file",
+              upload_file_id: p.id
+            };
+          });
+      }
+
+      /**
+       * 与项目内 streamChat（session 版）body 结构一致，仅鉴权改为 Bearer Key。
+       * { agentId, query, user, inputs, conversationId?, files?, responseMode?, autoGenerateName? }
+       */
+      function buildQueryPayload(text, filesSnapshot) {
+        var files = buildDifyFilesArray(filesSnapshot);
+        var q = String(text || "").trim();
+        if (!q && files.length) q = "请结合图片回答";
+        var payload = {
+          agentId: cfg.agentId,
+          query: q,
+          user: cfg.user,
+          inputs: {}
+        };
+        if (cfg.conversationId) payload.conversationId = cfg.conversationId;
+        if (files.length) payload.files = files;
+        if (url.searchParams.get("omitResponseMode") !== "1") {
+          payload.responseMode = "streaming";
+        }
+        if (url.searchParams.get("autoGenerateName") === "1") {
+          payload.autoGenerateName = true;
+        }
+        if (url.searchParams.get("autoGenerateName") === "0") {
+          payload.autoGenerateName = false;
+        }
+        /** 仅调试用：与 session 版不一致的 snake_case（一般不要开） */
+        if (url.searchParams.get("legacySnakeBody") === "1") {
+          if (payload.conversationId) payload.conversation_id = payload.conversationId;
+          if (payload.responseMode) payload.response_mode = payload.responseMode;
+        }
+        return payload;
+      }
+
+      async function sendStreaming(query, filesSnapshot, userImagePreviewUrls) {
+        setBusy(true);
+        abortCtrl = new AbortController();
+        // 当前生成中使用的 assistant bubble（停止/异常时可更新）
+        currentAssistantBubble = null;
+        appendUserMessage(query, userImagePreviewUrls);
+
+        var assistantBubble = appendAssistantPlain("", "thinking");
+        ensureAssistantSpinner(assistantBubble);
+        currentAssistantBubble = assistantBubble;
+
+        const payload = buildQueryPayload(query, filesSnapshot);
+        if (url.searchParams.get("debug") === "1") {
+          console.log("[embed-chat] stream payload", JSON.parse(JSON.stringify(payload)));
+        }
+        pendingUploads = [];
+        renderPendingFiles();
+
+        try {
+          const resp = await fetch(cfg.base + "/api/dify/chat-messages/stream", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + cfg.key,
+              "Content-Type": "application/json",
+              Accept: "text/event-stream"
+            },
+            body: JSON.stringify(payload),
+          signal: abortCtrl.signal,
+          credentials: "omit"
+          });
+
+          if (!resp.ok) {
+            const txt = await resp.text();
+            throw new Error("HTTP " + resp.status + ": " + txt);
+          }
+
+          assistantBubble.classList.remove("thinking");
+
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          var acc = "";
+          var finished = false;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const chunks = buffer.split("\n\n");
+            buffer = chunks.pop() || "";
+
+            for (const chunk of chunks) {
+              const lines = chunk.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+              const dataLine = lines.find(function (l) { return l.indexOf("data:") === 0; });
+              if (!dataLine) continue;
+              const jsonStr = dataLine.slice(5).trim();
+              if (!jsonStr) continue;
+              let evt;
+              try {
+                evt = JSON.parse(jsonStr);
+              } catch (err) {
+                continue;
+              }
+              var cid = evt.conversation_id || evt.conversationId;
+              if (cid) {
+                cfg.conversationId = cid;
+                if (cfg.persistSession) safeLsSet(CONV_LS_KEY, cid);
+                // 通知父页面：保存 conversationId（父页 localStorage，规避第三方 iframe 存储隔离）
+                try {
+                  if (window.parent && window.parent !== window) {
+                    window.parent.postMessage(
+                      {
+                        type: "dify-embed-conversation-id",
+                        source: "dify-webui-embed",
+                        conversationId: cid
+                      },
+                      "*",
+                    );
+                  }
+                } catch (e) {}
+              }
+              var tid = evt.task_id || evt.taskId;
+              if (tid) activeTaskId = tid;
+              var piece =
+                typeof evt.answer === "string"
+                  ? evt.answer
+                  : typeof evt.delta === "string"
+                    ? evt.delta
+                    : typeof evt.text === "string"
+                      ? evt.text
+                      : "";
+              if (piece) {
+                acc += piece;
+                assistantBubble.textContent = normalizeFilesInText(acc);
+              }
+              if (evt.event === "message_end" || evt.event === "workflow_finished") {
+                if (String(acc || "").trim()) {
+                  setAssistantBubbleHtml(assistantBubble, acc);
+                } else {
+                  setAssistantBubbleHtml(assistantBubble, "请求失败或未收到内容，请重新尝试。");
+                }
+                finished = true;
+                break;
+              }
+              if (evt.event === "error") throw new Error(evt.message || "流式错误");
+            }
+            if (finished) break;
+          }
+          // 如果流式里已经结束事件了，提前返回避免连接不关闭导致 finally 不执行
+          if (String(acc || "").trim()) setAssistantBubbleHtml(assistantBubble, acc);
+          else setAssistantBubbleHtml(assistantBubble, "请求失败或未收到内容，请重新尝试。");
+        } catch (err) {
+          // AbortError 由停止按钮/关闭触发：不在 UI 再报错
+          if (err && err.name === "AbortError") throw err;
+          try {
+            setAssistantBubbleHtml(assistantBubble, "请求失败，请重新尝试。");
+          } catch (e) {}
+          if (err && typeof err === "object") err._uiHandled = true;
+          throw err;
+        } finally {
+          currentAssistantBubble = null;
+        }
+      }
+
+      async function loadHistory() {
+        if (!cfg.conversationId) return;
+        logTiming("loadHistory start", { conversationId: cfg.conversationId });
+        messagesEl.innerHTML = "";
+        const qs = new URLSearchParams({
+          agentId: String(cfg.agentId),
+          user: cfg.user,
+          conversationId: cfg.conversationId,
+          limit: "50"
+        });
+        const resp = await callApi("/api/dify/messages?" + qs.toString());
+        const data = await resp.json();
+
+        var items = [];
+        var p1 = data && data.data && data.data.payload && data.data.payload.data;
+        var p2 = data && data.payload && data.payload.data;
+        if (Array.isArray(p1)) items = p1;
+        else if (Array.isArray(p2)) items = p2;
+        else if (Array.isArray(data && data.data)) items = data.data;
+        else if (Array.isArray(data)) items = data;
+
+        var batchSize = 5; // 懒加载渲染：每批渲染若干条，避免一次性占用主线程太久
+        for (var idx = 0; idx < items.length; idx++) {
+          var item = items[idx];
+          var q = item.query || (item.inputs && item.inputs.query) || "";
+
+          var userImgs = collectMessageImageUrls(item, "user");
+          var assistantImgs = collectMessageImageUrls(item, "assistant");
+          if (!userImgs.length && !assistantImgs.length) {
+            // 如果后端没有 belongs_to 分组，就至少把图片都展示出来
+            userImgs = collectMessageImageUrls(item);
+            assistantImgs = [];
+          }
+
+          if (q || userImgs.length) appendUserMessage(q, userImgs);
+
+          var ans = item.answer || item.message || "";
+          var ansHasMarkdownImages = typeof ans === "string" && (ans.indexOf("![](") >= 0 || ans.indexOf("/files/") >= 0 || ans.indexOf("![" ) >= 0);
+          if (ansHasMarkdownImages) assistantImgs = [];
+
+          if (ans || assistantImgs.length) appendAssistantPlain(ans, "", assistantImgs);
+
+          // 分批渲染：让浏览器有机会重绘/响应滚动
+          if ((idx + 1) % batchSize === 0) {
+            await new Promise(function (r) {
+              setTimeout(r, 0);
+            });
+          }
+        }
+        logTiming("loadHistory done", { count: items.length });
+      }
+
+      async function loadOpeningStatement() {
+        // Dify parameters 接口：用于首次加载展示 opening_statement
+        logTiming("loadOpeningStatement start");
+        try {
+          var resp = await callApi(
+            "/api/dify/parameters?agentId=" + encodeURIComponent(String(cfg.agentId)),
+            { method: "GET" },
+          );
+          var data = await resp.json();
+          var payload = data && data.data && data.data.payload ? data.data.payload : null;
+          var opening = payload && payload.opening_statement ? String(payload.opening_statement) : "";
+          openingStatement = opening || "";
+          logTiming("loadOpeningStatement done", { hasOpening: !!openingStatement });
+        } catch (e) {
+          // 忽略：parameters 失败不影响聊天
+          openingStatement = "";
+          logTiming("loadOpeningStatement fail", String((e && e.message) || e));
+        }
+      }
+
+      function renderOpeningStatementIfNeeded() {
+        if (!openingStatement) return;
+        if (messagesEl.children && messagesEl.children.length > 0) return;
+        appendAssistantPlain(openingStatement, "");
+      }
+
+      async function stopGeneration() {
+        var taskId = activeTaskId;
+        activeTaskId = null;
+        try {
+          if (abortCtrl) abortCtrl.abort();
+        } catch (e) {}
+        // 先乐观恢复 UI，避免用户觉得卡住
+        setBusy(false);
+        try {
+          if (currentAssistantBubble) {
+            setAssistantBubbleHtml(currentAssistantBubble, "已停止");
+          }
+        } catch (e) {}
+        currentAssistantBubble = null;
+        if (!taskId) return;
+        try {
+          await callApi(`/api/dify/chat-messages/${encodeURIComponent(taskId)}/stop`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: cfg.agentId,
+              user: cfg.user
+            })
+          });
+        } catch (e) {
+          /* 停止失败也无所谓：abort 已经取消了流式请求 */
+        }
+      }
+
+      async function onSend() {
+        const text = inputEl.value.trim();
+        var withId = pendingUploads.filter(function (p) {
+          return p.id;
+        });
+        var stillUploading = pendingUploads.some(function (p) {
+          return !p.id && !p.error;
+        });
+        if (stillUploading) {
+          alert("请等待图片上传完成后再发送，或先移除未传完的项。");
+          return;
+        }
+        if (isStreaming) return;
+        if (!text) return;
+        var snap = pendingUploads.slice();
+        var previews = snap
+          .filter(function (p) {
+            return p.id && p.previewUrl;
+          })
+          .map(function (p) {
+            return p.previewUrl;
+          });
+        inputEl.value = "";
+        updateSendState();
+        try {
+          await sendStreaming(text, snap, previews);
+        } catch (err) {
+          if (err.name === "AbortError") return;
+          if (err && err._uiHandled) return;
+          appendAssistantPlain("请求失败，请重新尝试。", "");
+        } finally {
+          setBusy(false);
+          activeTaskId = null;
+          abortCtrl = null;
+        }
+      }
+
+      function onSendBtnClick() {
+        if (isStreaming) stopGeneration();
+        else onSend();
+      }
+
+      btnSend.addEventListener("click", onSendBtnClick);
+      inputEl.addEventListener("input", updateSendState);
+      inputEl.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          if (isStreaming) stopGeneration();
+          else onSend();
+        }
+      });
+
+      btnRefresh.addEventListener("click", function () {
+        resetSession();
+      });
+
+      // btnExpand.addEventListener("click", function () {
+      //   if (window.parent !== window) {
+      //     window.parent.postMessage({ type: "dify-embed-toggle-expand", source: "dify-webui-embed" }, "*");
+      //     return;
+      //   }
+      //   var root = $("appRoot");
+      //   if (!document.fullscreenElement) {
+      //     root.requestFullscreen && root.requestFullscreen().catch(function () {});
+      //   } else {
+      //     document.exitFullscreen && document.exitFullscreen().catch(function () {});
+      //   }
+      // });
+
+      var bootLoaderHidden = false;
+      function hideBootLoader() {
+        if (bootLoaderHidden) return;
+        bootLoaderHidden = true;
+        document.body.classList.add("boot-ready");
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(
+              { type: "dify-embed-ready", source: "dify-webui-embed" },
+              "*"
+            );
+          }
+        } catch (e) {}
+        var el = document.getElementById("pageBootLoader");
+        if (el) {
+          window.setTimeout(function () {
+            try {
+              el.remove();
+            } catch (e) {
+              el.style.display = "none";
+            }
+          }, 320);
+        }
+      }
+
+      var appStarted = false;
+      function startEmbedApp() {
+        if (appStarted) return;
+        appStarted = true;
+        logTiming("startEmbedApp");
+        (async function init() {
+          logTiming("init start");
+          try {
+            if (requiredConfigMissing()) {
+              appendRow("assistant", "缺少配置：请在 URL 中提供 base、key、agentId、user；或使用 dify-embed.js（key 由 postMessage 下发）。");
+              inputEl.disabled = true;
+              btnSend.disabled = true;
+              btnAttach.disabled = true;
+              btnEmoji.disabled = true;
+              return;
+            }
+            /* HTML 已缓存也可能「白很久」：若等开场白/历史接口再关遮罩，慢的是 /xai 而不是 embed-chat.html */
+            hideBootLoader();
+            await loadOpeningStatement();
+            try {
+              await loadHistory();
+            } catch (e) {
+              /* 无历史则空白 */
+            }
+            renderOpeningStatementIfNeeded();
+            updateSendState();
+            logTiming("init done");
+          } finally {
+            hideBootLoader();
+            logTiming("init finally");
+          }
+        })();
+      }
+
+      if (keyViaPost && !cfg.key && !parentOriginExpected) {
+        appendRow(
+          "assistant",
+          "缺少 parentOrigin：使用 keyViaPost=1 时请在 URL 中附带 parentOrigin=encodeURIComponent(父页面 origin)，或改用 URL 参数 key=…（不推荐），或在 difyEmbedConfig 中设置 embedKeyInUrl: true。"
+        );
+        inputEl.disabled = true;
+        btnSend.disabled = true;
+        btnAttach.disabled = true;
+        btnEmoji.disabled = true;
+        hideBootLoader();
+      } else if (keyViaPost && !cfg.key) {
+        logTiming("wait parent credentials", { parentOriginExpected: parentOriginExpected || "(empty)" });
+        function requestCredentialsFromParent() {
+          try {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage(
+                { source: "dify-webui-embed", type: "dify-embed-request-credentials" },
+                parentOriginExpected || "*"
+              );
+            }
+          } catch (e) {}
+        }
+        var credWaitTimer = window.setTimeout(function () {
+          if (appStarted) return;
+          appendRow("assistant", "未能收到父页面密钥：请使用 dify-embed.js，或自行向本页 postMessage 下发 apiKey。");
+          inputEl.disabled = true;
+          btnSend.disabled = true;
+          btnAttach.disabled = true;
+          btnEmoji.disabled = true;
+          hideBootLoader();
+        }, 12000);
+        requestCredentialsFromParent();
+        var credRetryTimer = window.setInterval(function () {
+          if (appStarted) {
+            window.clearInterval(credRetryTimer);
+            return;
+          }
+          requestCredentialsFromParent();
+        }, 700);
+        window.addEventListener("message", function onParentCredentials(e) {
+          var d = e.data;
+          if (!d || d.source !== "dify-webui-embed" || d.type !== "dify-embed-credentials") return;
+          if (parentOriginExpected && e.origin !== parentOriginExpected) return;
+          if (!d.apiKey || typeof d.apiKey !== "string") return;
+          logTiming("received parent credentials", { origin: e.origin });
+          window.clearTimeout(credWaitTimer);
+          window.clearInterval(credRetryTimer);
+          window.removeEventListener("message", onParentCredentials);
+          cfg.key = d.apiKey;
+          startEmbedApp();
+        });
+      } else {
+        startEmbedApp();
+      }
+    })();
+  </script>
+</body>
+</html>

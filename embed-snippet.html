@@ -1,0 +1,37 @@
+<!--
+  ============================================
+  复制下面「从 <script> 到 </script>」整段，贴到你网站 </body> 前。
+  把 YOUR_* 换成你的部署地址与 Key（生产建议由后端输出短期 Key）。
+  ============================================
+-->
+
+<script>
+  window.difyEmbedConfig = {
+    // 托管本仓库静态文件的域名 + 路径（与 dify-embed.js 同目录下有 embed-chat.html）
+    embedPage: "https://YOUR_DOMAIN/path/embed-chat.html",
+    apiBase: "https://YOUR_API_HOST",
+    apiKey: "xai-YOUR_KEY",
+    agentId: 3,
+    title: "测试",
+    // 可选：头像（支持文本/emoji 或图片地址）
+    userAvatar: "我",
+    botAvatar: "🤖"
+    // , openOnLoad: true   // 可选：进入页面就展开聊天窗
+    // , embedKeyInUrl: true   // 仅调试：把 key 放进 iframe URL（不推荐，易泄露）
+    // , lazyMount: true       // 默认 true：点击气泡后才创建 iframe（推荐）
+    // , prewarmOnIdle: true   // 可选：页面空闲时预热 iframe，打开更快
+  };
+</script>
+<script src="https://YOUR_DOMAIN/path/dify-embed.js" defer></script>
+
+<!--
+  仅 iframe、不要右下角气泡时：默认不要在 URL 里带 key，应由父页 postMessage 下发（见 README）。
+  临时调试可带 key=（不推荐）：
+
+  <iframe
+    src="https://YOUR_DOMAIN/path/embed-chat.html?base=https%3A%2F%2FYOUR_API_HOST&key=xai-YOUR_KEY&agentId=3&user=embed_user_001&title=%E6%B5%8B%E8%AF%95"
+    style="width:400px;height:560px;border:0;border-radius:16px;box-shadow:0 12px 48px rgba(21,94,239,.2)"
+    allow="fullscreen"
+    title="测试"
+  ></iframe>
+-->
