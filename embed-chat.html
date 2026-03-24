@@ -636,6 +636,7 @@
         base: (url.searchParams.get("base") || defaultBase).replace(/\/+$/, ""),
         key: url.searchParams.get("key") || "",
         agentId: Number(url.searchParams.get("agentId") || 0),
+        appId: (url.searchParams.get("appId") || "").trim(),
         user: (url.searchParams.get("user") || "").trim(),
         title: url.searchParams.get("title") || "助手",
         conversationId: url.searchParams.get("conversationId") || null,
@@ -806,6 +807,150 @@
           });
           throw e;
         }
+      }
+
+      function pickEventName(evt, sseEventName) {
+        if (evt && typeof evt.event === "string" && evt.event) return evt.event;
+        return sseEventName || "";
+      }
+
+      function extractAssistantPiece(evt) {
+        if (!evt || typeof evt !== "object") return "";
+        if (typeof evt.answer === "string") return evt.answer;
+        if (typeof evt.delta === "string") return evt.delta;
+        if (typeof evt.text === "string") return evt.text;
+        var d = evt.data;
+        if (d && typeof d === "object") {
+          if (typeof d.text === "string") return d.text;
+          if (d.outputs && typeof d.outputs === "object" && typeof d.outputs.text === "string") {
+            return d.outputs.text;
+          }
+        }
+        return "";
+      }
+
+      function extractHumanInputPayload(evt) {
+        var d = evt && evt.data && typeof evt.data === "object" ? evt.data : {};
+        return {
+          formId: d.form_id || d.formId || "",
+          formToken: d.form_token || d.formToken || "",
+          nodeId: d.node_id || d.nodeId || "",
+          nodeTitle: d.node_title || d.nodeTitle || "人工介入",
+          formContent: d.form_content || d.formContent || "",
+          inputs: Array.isArray(d.inputs) ? d.inputs : [],
+          actions: Array.isArray(d.actions) ? d.actions : []
+        };
+      }
+
+      function renderHumanInputForm(bubble, req) {
+        bubble.classList.remove("thinking");
+        bubble.innerHTML = "";
+        var wrap = document.createElement("div");
+        wrap.className = "msg-text";
+        var lead = String(req.formContent || "").replace(/\{\{[^}]+\}\}/g, "").trim();
+        if (lead) {
+          var p = document.createElement("div");
+          p.textContent = lead;
+          wrap.appendChild(p);
+        }
+        var form = document.createElement("form");
+        form.style.marginTop = "10px";
+        form.style.display = "grid";
+        form.style.gap = "8px";
+
+        var controls = [];
+        (req.inputs || []).forEach(function (it, idx) {
+          var key = (it && (it.output_variable_name || it.outputVariableName)) || "field_" + idx;
+          var type = String((it && it.type) || "text");
+          var input;
+          if (type === "paragraph" || type === "textarea") {
+            input = document.createElement("textarea");
+            input.rows = 3;
+          } else {
+            input = document.createElement("input");
+            input.type = "text";
+          }
+          input.name = key;
+          input.placeholder = key;
+          input.style.width = "100%";
+          input.style.padding = "8px 10px";
+          input.style.border = "1px solid #d6dbe5";
+          input.style.borderRadius = "8px";
+          input.style.font = "inherit";
+          controls.push({ key: key, el: input });
+          form.appendChild(input);
+        });
+
+        if (!controls.length) {
+          var fallback = document.createElement("textarea");
+          fallback.rows = 3;
+          fallback.name = "input";
+          fallback.placeholder = "请输入…";
+          fallback.style.width = "100%";
+          fallback.style.padding = "8px 10px";
+          fallback.style.border = "1px solid #d6dbe5";
+          fallback.style.borderRadius = "8px";
+          fallback.style.font = "inherit";
+          controls.push({ key: "input", el: fallback });
+          form.appendChild(fallback);
+        }
+
+        var submit = document.createElement("button");
+        submit.type = "submit";
+        submit.textContent = (req.actions && req.actions[0] && req.actions[0].title) || "提交";
+        submit.style.justifySelf = "start";
+        submit.style.padding = "7px 12px";
+        submit.style.border = "0";
+        submit.style.borderRadius = "8px";
+        submit.style.background = "#155eef";
+        submit.style.color = "#fff";
+        submit.style.cursor = "pointer";
+        form.appendChild(submit);
+
+        form.addEventListener("submit", async function (ev) {
+          ev.preventDefault();
+          var values = {};
+          controls.forEach(function (c) {
+            values[c.key] = c.el.value || "";
+          });
+          submit.disabled = true;
+          submit.textContent = "提交中…";
+          try {
+            await submitHumanInput(req, values);
+            setAssistantBubbleHtml(bubble, "已提交人工信息，请等待客服处理。");
+          } catch (e) {
+            submit.disabled = false;
+            submit.textContent = "重试提交";
+            appendAssistantPlain("人工输入提交失败，请稍后重试。", "");
+          }
+        });
+
+        wrap.appendChild(form);
+        bubble.appendChild(wrap);
+      }
+
+      async function submitHumanInput(req, values) {
+        var token = String(req.formToken || "").trim();
+        if (!token) throw new Error("缺少 formToken");
+        var customPath = url.searchParams.get("humanInputPath");
+        var pathTemplate =
+          customPath && customPath.trim()
+            ? customPath.trim()
+            : "/api/dify/form/human-input/{formToken}";
+        var path = pathTemplate.replace(/\{formToken\}/g, encodeURIComponent(token));
+        var payload = {
+          appId: cfg.appId || null,
+          action: (req.actions && req.actions[0] && req.actions[0].id) || "Send",
+          inputs: values || {}
+        };
+        if (!payload.appId) {
+          throw new Error("缺少 appId（可在 URL 传 appId，或等待流式 meta 事件下发）");
+        }
+        await callApi(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
       }
 
       function escapeHtml(s) {
@@ -1385,6 +1530,7 @@
           let buffer = "";
           var acc = "";
           var finished = false;
+          var waitingHumanInput = null;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -1395,6 +1541,7 @@
 
             for (const chunk of chunks) {
               const lines = chunk.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+              const eventLine = lines.find(function (l) { return l.indexOf("event:") === 0; });
               const dataLine = lines.find(function (l) { return l.indexOf("data:") === 0; });
               if (!dataLine) continue;
               const jsonStr = dataLine.slice(5).trim();
@@ -1404,6 +1551,11 @@
                 evt = JSON.parse(jsonStr);
               } catch (err) {
                 continue;
+              }
+              evt.event = pickEventName(evt, eventLine ? eventLine.slice(6).trim() : "");
+              if (!cfg.appId) {
+                var sid = evt.appId || evt.app_id || (evt.data && (evt.data.appId || evt.data.app_id));
+                if (sid) cfg.appId = String(sid);
               }
               var cid = evt.conversation_id || evt.conversationId;
               if (cid) {
@@ -1425,17 +1577,22 @@
               }
               var tid = evt.task_id || evt.taskId;
               if (tid) activeTaskId = tid;
-              var piece =
-                typeof evt.answer === "string"
-                  ? evt.answer
-                  : typeof evt.delta === "string"
-                    ? evt.delta
-                    : typeof evt.text === "string"
-                      ? evt.text
-                      : "";
+              var piece = extractAssistantPiece(evt);
               if (piece) {
                 acc += piece;
                 assistantBubble.textContent = normalizeFilesInText(acc);
+              }
+              if (evt.event === "human_input_required") {
+                waitingHumanInput = extractHumanInputPayload(evt);
+                if (!acc && waitingHumanInput.formContent) {
+                  acc = waitingHumanInput.formContent;
+                }
+                finished = true;
+                break;
+              }
+              if (evt.event === "workflow_paused") {
+                finished = true;
+                break;
               }
               if (evt.event === "message_end" || evt.event === "workflow_finished") {
                 if (String(acc || "").trim()) {
@@ -1449,6 +1606,10 @@
               if (evt.event === "error") throw new Error(evt.message || "流式错误");
             }
             if (finished) break;
+          }
+          if (waitingHumanInput) {
+            renderHumanInputForm(assistantBubble, waitingHumanInput);
+            return;
           }
           // 如果流式里已经结束事件了，提前返回避免连接不关闭导致 finally 不执行
           if (String(acc || "").trim()) setAssistantBubbleHtml(assistantBubble, acc);
